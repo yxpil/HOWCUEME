@@ -316,8 +316,10 @@ fn serve_exposes_health_rules_and_invoke() {
             };
             if line.contains("listening on http://") {
                 if let Some(port) = line
-                    .rsplit(':')
-                    .next()
+                    .split("listening on http://")
+                    .nth(1)
+                    .and_then(|rest| rest.split_whitespace().next())
+                    .and_then(|addr| addr.rsplit(':').next())
                     .and_then(|p| p.trim().parse::<u16>().ok())
                 {
                     let _ = tx.send(port);

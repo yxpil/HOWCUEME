@@ -28,12 +28,13 @@ pub async fn run_serve(host: &str, port: u16, ctx: Arc<PollCtx>) -> Result<()> {
         .route("/health", get(health))
         .route("/rules", get(rules))
         .route("/invoke", post(invoke))
+        .merge(crate::mcp::routes())
         .with_state(ctx);
 
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let local = listener.local_addr()?;
-    eprintln!("howcueme serve listening on http://{local}");
+    eprintln!("howcueme serve listening on http://{local} (POST /invoke, POST /mcp MCP)");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -44,6 +45,51 @@ async fn health() -> Json<Value> {
 
 async fn rules(State(ctx): State<Arc<PollCtx>>) -> Json<Value> {
     Json(json!({ "ok": true, "rules": poll::rules_snapshot(&ctx) }))
+}
+
+/// Why an action call failed. `Bad` maps to HTTP 400, `NotFound` to 404,
+/// `Internal` to 500; the MCP surface flattens all into `isError` results.
+pub enum ActionError {
+    Bad(String),
+    NotFound(String),
+    Internal(String),
+}
+
+/// Shared action routing used by `POST /invoke` and the MCP `tools/call`, so
+/// both protocols always agree on behavior and error semantics. Takes the
+/// context by `Arc` because `fire` runs the blocking rule on a worker thread.
+pub async fn dispatch_action(
+    ctx: Arc<PollCtx>,
+    action: &str,
+    params: &Value,
+) -> std::result::Result<Value, ActionError> {
+    match action {
+        "status" => Ok(json!({ "ok": true, "status": status_of(&ctx) })),
+        "list" => Ok(json!({ "ok": true, "rules": poll::rules_snapshot(&ctx) })),
+        "fire" => {
+            let name = params
+                .get("rule")
+                .and_then(Value::as_str)
+                .or_else(|| params.get("name").and_then(Value::as_str))
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                return Err(ActionError::Bad(
+                    "params.rule is required for action 'fire'".to_string(),
+                ));
+            }
+            let res = tokio::task::spawn_blocking(move || poll::fire_rule(&ctx, &name)).await;
+            match res {
+                Ok(Ok(ev)) => Ok(json!({ "ok": true, "event": ev.to_json() })),
+                Ok(Err(e)) => Err(ActionError::NotFound(e.to_string())),
+                Err(e) => Err(ActionError::Internal(e.to_string())),
+            }
+        }
+        "validate" => Ok(json!({ "ok": true, "validate": validate_payload(&ctx) })),
+        other => Err(ActionError::Bad(format!(
+            "unknown action '{other}' (expected status|list|fire|validate)"
+        ))),
+    }
 }
 
 /// BIT Remote tool entry point. Accepts the BIT payload
@@ -62,40 +108,17 @@ async fn invoke(
         .unwrap_or("")
         .to_string();
 
-    match action.as_str() {
-        "status" => Ok(Json(json!({ "ok": true, "status": status_of(&ctx) }))),
-        "list" => Ok(Json(
-            json!({ "ok": true, "rules": poll::rules_snapshot(&ctx) }),
+    match dispatch_action(ctx.clone(), &action, &params).await {
+        Ok(value) => Ok(Json(value)),
+        Err(ActionError::Bad(msg)) => Err(bad_request(&msg)),
+        Err(ActionError::NotFound(msg)) => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": msg })),
         )),
-        "fire" => {
-            let name = params
-                .get("rule")
-                .and_then(Value::as_str)
-                .or_else(|| params.get("name").and_then(Value::as_str))
-                .unwrap_or("")
-                .to_string();
-            if name.is_empty() {
-                return Err(bad_request("params.rule is required for action 'fire'"));
-            }
-            let res = tokio::task::spawn_blocking(move || poll::fire_rule(&ctx, &name)).await;
-            match res {
-                Ok(Ok(ev)) => Ok(Json(json!({ "ok": true, "event": ev.to_json() }))),
-                Ok(Err(e)) => Err((
-                    StatusCode::NOT_FOUND,
-                    Json(json!({ "ok": false, "error": e.to_string() })),
-                )),
-                Err(e) => Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "ok": false, "error": e.to_string() })),
-                )),
-            }
-        }
-        "validate" => Ok(Json(
-            json!({ "ok": true, "validate": validate_payload(&ctx) }),
+        Err(ActionError::Internal(msg)) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "error": msg })),
         )),
-        other => Err(bad_request(&format!(
-            "unknown action '{other}' (expected status|list|fire|validate)"
-        ))),
     }
 }
 

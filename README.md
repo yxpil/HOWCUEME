@@ -30,7 +30,7 @@ HOWCUEME lets an AI agent (especially [BIT](https://github.com/yxpil/bit)) **wak
 - **Cooldown** (`cooldown_secs`) per rule prevents trigger storms.
 - **Persistent state** (`state.json`): last trigger time per rule + file mtime snapshots, survives restarts.
 - **Daemon or one-shot**: `run` polls every 5 s (adjustable); `run --once` evaluates a single round and exits — ideal for tests and BIT exec calls.
-- **HTTP API** in `serve` mode on `127.0.0.1:8752`: `GET /health`, `GET /rules`, `POST /invoke` (BIT Remote protocol).
+- **HTTP API** in `serve` mode on `127.0.0.1:8752`: `GET /health`, `GET /rules`, `POST /invoke` (BIT Remote protocol), MCP (Streamable HTTP JSON-RPC) on `POST /mcp` and `POST /`.
 - **BIT exec-mode contract**: every subcommand accepts `--json`; when stdin is a pipe, a JSON object is read and merged over CLI args (stdin wins).
 
 ### Install
@@ -280,6 +280,7 @@ No human in the loop: the agent schedules its own wake-ups.
 | `/health` | GET | Liveness probe → `{"ok":true}` |
 | `/rules` | GET | All rules + persisted state (last trigger, mtime snapshots) |
 | `/invoke` | POST | BIT Remote tool entry: `{"tool_id":"...","tool":"...","invoked_by":"...","params":{...}}`, routed on `params.action` (or `params.tool`): `status` \| `list` \| `fire` \| `validate`; `fire` requires `params.rule` |
+| `/mcp`, `/` | POST | MCP Streamable HTTP JSON-RPC: `initialize`, `tools/list`, `tools/call`, `ping` — the four actions surface as four tools (`status`, `list`, `fire`, `validate`; `fire` takes `{"rule": "..."}`) |
 
 `/invoke` examples:
 
@@ -322,7 +323,7 @@ HOWCUEME 让 AI 智能体（尤其是 [BIT](https://github.com/yxpil/bit)）**�
 - **冷却**（`cooldown_secs`）逐规则防抖，避免触发风暴。
 - **状态持久化**（`state.json`）：每条规则的上次触发时间 + 文件 mtime 快照，重启不丢。
 - **守护或单次**：`run` 默认每 5 秒轮询（可调）；`run --once` 只评估一轮立即退出——适合测试与 BIT exec 调用。
-- **HTTP API**：`serve` 模式监听 `127.0.0.1:8752`：`GET /health`、`GET /rules`、`POST /invoke`（BIT Remote 协议）。
+- **HTTP API**：`serve` 模式监听 `127.0.0.1:8752`：`GET /health`、`GET /rules`、`POST /invoke`（BIT Remote 协议）、MCP（Streamable HTTP JSON-RPC，`POST /mcp` 与 `POST /`）。
 - **BIT exec 契约**：所有子命令支持 `--json`；stdin 为管道时读取 JSON 对象并合并覆盖 CLI 参数（stdin 优先）。
 
 ### 安装
@@ -481,6 +482,7 @@ prompt = "任务队列有变化，请处理新条目。"
 | `/health` | GET | 存活探测 → `{"ok":true}` |
 | `/rules` | GET | 全部规则 + 持久化状态（上次触发、mtime 快照） |
 | `/invoke` | POST | BIT Remote 工具入口：`{"tool_id":"...","tool":"...","invoked_by":"...","params":{...}}`，按 `params.action`（或 `params.tool`）路由：`status` \| `list` \| `fire` \| `validate`；`fire` 需要 `params.rule` |
+| `/mcp`、`/` | POST | MCP Streamable HTTP JSON-RPC：`initialize`、`tools/list`、`tools/call`、`ping`——四个动作以四个工具暴露（`status`、`list`、`fire`、`validate`；`fire` 入参 `{"rule": "..."}`） |
 
 错误：未知 action 或缺少 `params.rule` → HTTP 400，返回 `{"ok":false,"error":"..."}`；规则不存在 → HTTP 404。
 

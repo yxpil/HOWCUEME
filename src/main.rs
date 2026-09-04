@@ -1,6 +1,7 @@
 mod action;
 mod cond;
 mod config;
+mod mcp;
 mod poll;
 mod serve;
 mod state;
