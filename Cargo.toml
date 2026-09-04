@@ -1,0 +1,31 @@
+[package]
+name = "howcueme"
+version = "0.1.0"
+edition = "2021"
+description = "Conditional self-wakeup daemon for AI agents (BIT ecosystem)"
+license = "Apache-2.0"
+repository = "https://github.com/yxpil/HOWCUEME"
+readme = "README.md"
+keywords = ["agent", "automation", "scheduler", "bit", "wakeup"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "howcueme"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+chrono = "0.4"
+dirs = "6"
+sysinfo = "0.39"
+ureq = { version = "2", features = ["json"] }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "macros"] }
+
+[profile.release]
+strip = true
+lto = true
