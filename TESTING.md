@@ -1,5 +1,12 @@
 # HOWCUEME 测试说明
 
+- 测试完成：是（2026-10-04）
+- 测试日期：2026-10-04
+- 测试内容：单元覆盖 config（规则 TOML 解析/语义校验/URL scheme 守卫）、cond（interval/daily/file/http/process 条件求值）、action（webhook/command/wake_bit 执行与错误报告）；集成覆盖 CLI 与 MCP（status/list/fire/validate）全链路；注入测试覆盖拒绝 file:/javascript:/gopher: 协议、webhook body 始终合法 JSON 转义、命令参数不经 shell、路径穿越/缺失路径容错；钩子测试覆盖 MCP 工具稳定顺序、未注册拒绝、失败触发不影响兄弟工具。
+- 运行命令：`cargo test < NUL`（交互式终端给空 stdin 避免子进程阻塞）
+- 测试框架：Rust #[cfg(test)]
+- 模型：豆包（Doubao）生成
+
 单 crate（`src/main.rs` 二进制 + 内嵌模块）。单元测试留在各 `src/*.rs` 的 `#[cfg(test)]`，
 集成测试放仓库根 `tests/`（`cli.rs`、`mcp.rs` 既有；本次新增 `injection.rs`、`hooks.rs`）。
 
