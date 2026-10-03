@@ -451,4 +451,73 @@ args = ["bit gone"]
             None => std::env::remove_var(key),
         }
     }
+
+    // ── 注入硬化：规则文件里的 URL/名字是不可信输入 ──
+
+    #[test]
+    fn validate_rejects_non_http_and_evil_schemes() {
+        // SSRF/协议注入：file://、javascript:、gopher: 都必须被 validate 拒掉。
+        let cfg = parse(
+            r#"
+[[rule]]
+name = "r1"
+[rule.when]
+type = "http"
+url = "file:///etc/passwd"
+[rule.action]
+type = "webhook"
+url = "javascript:alert(1)"
+
+[[rule]]
+name = "r2"
+[rule.when]
+type = "interval"
+every_secs = 10
+[rule.action]
+type = "wake_bit"
+bit_url = "gopher://evil/x"
+client_key = "k"
+prompt = "wake up"
+"#,
+        )
+        .unwrap();
+        let errors = validate(&cfg);
+        let joined = errors.join("\n");
+        assert!(errors.iter().any(|e| e.contains("when.http.url")), "{joined}");
+        assert!(errors.iter().any(|e| e.contains("action.webhook.url")), "{joined}");
+        assert!(errors.iter().any(|e| e.contains("action.wake_bit.bit_url")), "{joined}");
+    }
+
+    #[test]
+    fn xss_rule_name_is_opaque_data_duplicates_still_detected() {
+        // 规则名里塞 XSS：它只是个字符串键，不得破坏解析；重名检测照常。
+        let cfg = parse(
+            r#"
+[[rule]]
+name = "<script>alert(1)</script>"
+[rule.when]
+type = "interval"
+every_secs = 10
+[rule.action]
+type = "command"
+cmd = "echo"
+
+[[rule]]
+name = "<script>alert(1)</script>"
+[rule.when]
+type = "interval"
+every_secs = 10
+[rule.action]
+type = "command"
+cmd = "echo"
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.rules[0].name, "<script>alert(1)</script>");
+        let errors = validate(&cfg);
+        assert!(
+            errors.iter().any(|e| e.contains("duplicate rule name")),
+            "XSS 名字作为数据仍要参与重名检测: {errors:?}"
+        );
+    }
 }

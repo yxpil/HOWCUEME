@@ -234,4 +234,15 @@ mod tests {
         let (fired, _) = eval_process("howcueme-definitely-not-running-9f3a1", ProcOp::Exists);
         assert!(!fired);
     }
+
+    #[test]
+    fn file_condition_handles_traversal_and_missing_paths_safely() {
+        // 配置里的 file.path 是不可信输入：指向不存在/穿越路径时只报告不触发、不 panic。
+        let (fired, snap) = eval_file("../../../../no/such/file-9f3a1.txt", FileOp::Exists, None);
+        assert!(!fired, "不存在的路径不得触发");
+        assert!(snap.is_none());
+        let (fired, snap) = eval_file("..\\..\\windows\\system32\\no-such-9f3a1", FileOp::Changed, Some(1));
+        assert!(!fired);
+        assert!(snap.is_none());
+    }
 }

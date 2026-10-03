@@ -272,4 +272,52 @@ mod tests {
         assert!(!ex.ok);
         assert!(ex.result.get("error").is_some() || ex.result.get("status").is_some());
     }
+
+    // ── 注入硬化 ──
+
+    #[test]
+    fn webhook_payload_safely_escapes_xss_and_quotes() {
+        // 规则名/结果里塞 XSS 与引号：POST 出去的 body 必须是合法 JSON，
+        // 危险字符被转义为字符串值，不破坏 JSON 结构。
+        let (url, rx) = spawn_capture_server();
+        let ex = execute(
+            &Action::Webhook { url },
+            "<script>alert(\"xss\")</script>",
+            "2026-09-04T08:00:00Z",
+            &json!({"note": "it's a \"test\" <b>"}),
+            &json!({"payload": "'); DROP TABLE rules;--"}),
+        );
+        assert!(ex.ok);
+        let req = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let body = req.split("\r\n\r\n").nth(1).unwrap_or("");
+        // 关键：整段 body 能被 JSON 解析回来（不是被引号/尖括号破坏）
+        let v: Value = serde_json::from_str(body).expect("webhook body must stay valid JSON");
+        assert_eq!(v["rule"], "<script>alert(\"xss\")</script>");
+        assert!(v["result"]["payload"].as_str().unwrap().contains("DROP TABLE"));
+    }
+
+    #[test]
+    fn command_args_are_literal_no_shell_injection() {
+        // Command::new 不经 shell：args 里的 ; && | 必须作为字面量原样传递，
+        // 绝不被 shell 解释成另一条命令。
+        #[cfg(unix)]
+        let (cmd, args) = (
+            "echo".to_string(),
+            vec!["a; b && c | d".to_string()],
+        );
+        #[cfg(windows)]
+        let (cmd, args) = (
+            "cmd".to_string(),
+            vec![
+                "/C".to_string(),
+                "echo".to_string(),
+                "a; b && c | d".to_string(),
+            ],
+        );
+        let ex = execute(&Action::Command { cmd, args }, "r", "t", &json!({}), &json!({}));
+        assert!(ex.ok, "{}", ex.result);
+        let out = ex.result["stdout"].as_str().unwrap();
+        // 字面量串整体出现，没有被 shell 切分执行成多段
+        assert!(out.contains("a; b && c | d"), "输出应原样回显整串: {out}");
+    }
 }
