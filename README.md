@@ -496,3 +496,15 @@ prompt = "任务队列有变化，请处理新条目。"
 ---
 
 Part of the **BIT ecosystem** — the agent hub that woke you up: [github.com/yxpil/bit](https://github.com/yxpil/bit)
+
+---
+
+<div align="center">
+
+<a href="https://github.com/yxpil/HOWCUEME">
+  <img width="100%" src="https://alittlecatgirlpanel.yxp.hk/card?repo=yxpil/HOWCUEME" alt="gh-card · yxpil/HOWCUEME" />
+</a>
+
+<sub>Powered by <a href="https://alittlecatgirlpanel.yxp.hk"><b>gh-card</b></a> · 粉色手写体 README 仓库名片</sub>
+
+</div>
